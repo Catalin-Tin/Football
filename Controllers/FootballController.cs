@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Net.Http;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace Football.Controllers
 {
@@ -42,7 +43,7 @@ namespace Football.Controllers
                     return Ok("Microservice is functional");
                 }
                 else throw new Exception("Microservice is down");
-              
+
             }
             catch (Exception ex)
             {
@@ -106,7 +107,7 @@ namespace Football.Controllers
                                 Home = homeTeam,
                                 Away = awayTeam
                             };
-                            _context.Matches.Add(match);    
+                            _context.Matches.Add(match);
                             matches.Add(match);
                         }
                     }
@@ -149,7 +150,7 @@ namespace Football.Controllers
                 }
 
                 else return BadRequest();
-                    
+
             }
             catch (Exception ex)
             {
@@ -158,5 +159,103 @@ namespace Football.Controllers
             }
         }
 
+        [HttpGet]
+        [Route("getmatches/{day}")]
+        public async Task<IActionResult> GetMatchesOnACertainDay(string day)
+        {
+            try
+            {
+                if (!DateTime.TryParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
+                {
+                    return BadRequest("Invalid date format. Please provide the date in yyyy-MM-dd format.");
+                }
+
+                var client = new HttpClient();
+                var request = new HttpRequestMessage
+                {
+                    Method = HttpMethod.Get,
+                    RequestUri = new Uri($"https://api-football-v1.p.rapidapi.com/v3/fixtures?date={parsedDate.ToString("yyyy-MM-dd")}&league=39&season=2023"),
+                    Headers =
+            {
+                { "X-RapidAPI-Key", "f95ce684c2msh5ca0330a7bc3f70p115564jsnfc599ba663d2" },
+                { "X-RapidAPI-Host", "api-football-v1.p.rapidapi.com" },
+            },
+                };
+
+                using (var response = await client.SendAsync(request))
+                {
+                    response.EnsureSuccessStatusCode();
+                    var body = await response.Content.ReadAsStringAsync();
+
+                    var fixturesResponse = JsonConvert.DeserializeObject<FixtureResponse>(body);
+
+                    // Initialize a list to store the matches
+                    var matches = new List<Match>();
+
+                    // Iterate over each fixture in the response
+                    foreach (var fixture in fixturesResponse.Response)
+                    {
+                        // Extract required information
+                        var city = fixture.Fixture.Venue.City;
+                        var date = fixture.Fixture.Date;
+                        var homeTeam = fixture.Teams.Home.Name;
+                        var awayTeam = fixture.Teams.Away.Name;
+                        
+
+                        // Check if the match already exists in the database based on City and Date
+                        var existingMatch = await _context.Matches.FirstOrDefaultAsync(m => m.City == city && m.Date == date);
+                        if (existingMatch == null)
+                        {
+                            // Create a Match object and add it to the matches list
+                            var match = new Match
+                            {
+                                City = city,
+                                Date = date,
+                                Home = homeTeam,
+                                Away = awayTeam
+                                
+                            };
+                            _context.Matches.Add(match);
+                            matches.Add(match);
+                        }
+                        else matches.Add(existingMatch);
+                    }
+
+                    // Save changes to the database
+                    await _context.SaveChangesAsync();
+
+                    // Return the list of added matches
+                    return Ok(matches);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle exceptions if any
+                return StatusCode(500, ex.Message);
+            }
     }
+        [HttpGet]
+        [Route("venues/{city}")]
+        public async Task<IActionResult> GetAllVenuesInCity(string city)
+        {
+            var client = new HttpClient();
+            var request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Get,
+                RequestUri = new Uri($"https://api-football-v1.p.rapidapi.com/v3/venues?city={city}"),
+                Headers =
+    {
+        { "X-RapidAPI-Key", "f95ce684c2msh5ca0330a7bc3f70p115564jsnfc599ba663d2" },
+        { "X-RapidAPI-Host", "api-football-v1.p.rapidapi.com" },
+    },
+            };
+            using (var response = await client.SendAsync(request))
+            {
+                response.EnsureSuccessStatusCode();
+                var body = await response.Content.ReadAsStringAsync();
+                var res = JsonConvert.DeserializeObject<VenueResponse>(body);
+                return Ok(res);
+            }
+        }
+}
 }
