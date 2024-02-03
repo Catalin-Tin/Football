@@ -3,6 +3,9 @@ using Microsoft.EntityFrameworkCore;
 using MySql.EntityFrameworkCore;
 using MySqlConnector;
 using Football.Infrastructure.Persistence;
+using Serilog.Sinks.Elasticsearch;
+using Serilog;
+using Serilog.Exceptions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,7 +23,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddMySqlDataSource(builder.Configuration.GetConnectionString("DefaultConnection")!);
+configureLogging();
+builder.Host.UseSerilog();
 var app = builder.Build();
+
+            ThreadPool.SetMaxThreads(4, 3);
+
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -36,3 +44,37 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+void configureLogging()
+{
+    var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+    Log.Information($"Environemnt is {environment}");
+
+    var configuration = new ConfigurationBuilder()
+        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+        .AddJsonFile(
+        $"appsettings.{environment}.json", optional: true
+        ).Build();
+    Log.Logger = new LoggerConfiguration()
+        .Enrich.FromLogContext()
+        .Enrich.WithExceptionDetails()
+        .WriteTo.Debug()
+        .WriteTo.Console()
+        .WriteTo.Elasticsearch(ConfigureElasticSink(configuration, environment))
+        .Enrich.WithProperty("Environment", environment)
+        .ReadFrom.Configuration(configuration)
+        .CreateLogger();
+}
+ElasticsearchSinkOptions ConfigureElasticSink(IConfigurationRoot configuration, string environment)
+{
+    Log.Information(environment);
+
+    var assemblyName = "microservice_football"; ;
+
+    return new ElasticsearchSinkOptions(new Uri("http://elasticsearch:9200"))
+    {
+        AutoRegisterTemplate = true,
+        IndexFormat = assemblyName,
+        NumberOfReplicas = 1,
+        NumberOfShards = 2
+    };
+}

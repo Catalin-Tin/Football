@@ -32,8 +32,12 @@ namespace Football.Controllers
         [Route("status")]
         public async Task<IActionResult> GetStatus()
         {
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
             {
+                
+                
+
                 // Attempt to retrieve the city from the database
                 var matches = await _context.Matches.ToListAsync();
 
@@ -44,6 +48,11 @@ namespace Football.Controllers
                 }
                 else throw new Exception("Microservice is down");
 
+            }
+            catch (OperationCanceledException)
+            {
+                // Handle the timeout
+                return StatusCode(504, "Request timed out");
             }
             catch (Exception ex)
             {
@@ -57,8 +66,11 @@ namespace Football.Controllers
         [Route("getnextmatches")]
         public async Task<IActionResult> GetFootballMatchesNext5Days()
         {
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
             {
+                
+
                 DateTime today = DateTime.Today;
 
                 // Get the date 5 days from today
@@ -110,6 +122,7 @@ namespace Football.Controllers
                             _context.Matches.Add(match);
                             matches.Add(match);
                         }
+                        else matches.Add(existingMatch);
                     }
 
                     // Save changes to the database
@@ -118,6 +131,11 @@ namespace Football.Controllers
                     // Return the list of added matches
                     return Ok(matches);
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Handle the timeout
+                return StatusCode(504, "Request timed out");
             }
             catch (Exception ex)
             {
@@ -130,11 +148,11 @@ namespace Football.Controllers
         public async Task<IActionResult> GetDetailsAboutaMatch(string home, string away)
         {
             var httpClient = new HttpClient();
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
             {
-                var response = await httpClient.GetAsync("http://127.0.0.1:5000/football/getmatches");
-                if (response.IsSuccessStatusCode)
-                {
+
+              
                     var match = await _context.Matches.FirstOrDefaultAsync(m => m.Home == home && m.Away == away);
 
                     if (match != null)
@@ -147,10 +165,12 @@ namespace Football.Controllers
                         // No match found, return a message indicating that there is no such match
                         return NotFound("No matches found for the provided teams.");
                     }
-                }
-
-                else return BadRequest();
-
+               
+            }
+            catch (OperationCanceledException)
+            {
+                // Handle the timeout
+                return StatusCode(504, "Request timed out");
             }
             catch (Exception ex)
             {
@@ -163,8 +183,11 @@ namespace Football.Controllers
         [Route("getmatches/{day}")]
         public async Task<IActionResult> GetMatchesOnACertainDay(string day)
         {
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             try
             {
+                
+
                 if (!DateTime.TryParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
                 {
                     return BadRequest("Invalid date format. Please provide the date in yyyy-MM-dd format.");
@@ -228,6 +251,11 @@ namespace Football.Controllers
                     return Ok(matches);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Handle the timeout
+                return StatusCode(504, "Request timed out");
+            }
             catch (Exception ex)
             {
                 // Handle exceptions if any
@@ -238,24 +266,39 @@ namespace Football.Controllers
         [Route("venues/{city}")]
         public async Task<IActionResult> GetAllVenuesInCity(string city)
         {
-            var client = new HttpClient();
-            var request = new HttpRequestMessage
+            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            try
             {
-                Method = HttpMethod.Get,
-                RequestUri = new Uri($"https://api-football-v1.p.rapidapi.com/v3/venues?city={city}"),
-                Headers =
+               
+
+                //await Task.Delay(TimeSpan.FromSeconds(2), cts.Token);
+
+                var client = new HttpClient();
+                var request = new HttpRequestMessage
+                {
+                    Method = HttpMethod.Get,
+                    RequestUri = new Uri($"https://api-football-v1.p.rapidapi.com/v3/venues?city={city}"),
+                    Headers =
     {
         { "X-RapidAPI-Key", "f95ce684c2msh5ca0330a7bc3f70p115564jsnfc599ba663d2" },
         { "X-RapidAPI-Host", "api-football-v1.p.rapidapi.com" },
     },
-            };
-            using (var response = await client.SendAsync(request))
-            {
-                response.EnsureSuccessStatusCode();
-                var body = await response.Content.ReadAsStringAsync();
-                var res = JsonConvert.DeserializeObject<VenueResponse>(body);
-                return Ok(res);
+                };
+                using (var response = await client.SendAsync(request))
+                {
+                    response.EnsureSuccessStatusCode();
+                    var body = await response.Content.ReadAsStringAsync();
+                    var res = JsonConvert.DeserializeObject<VenueResponse>(body);
+                    return Ok(res);
+                }
             }
+            catch (OperationCanceledException)
+            {
+                // Handle the timeout
+                return StatusCode(504, "Request timed out");
+            }
+          
         }
+
 }
 }
